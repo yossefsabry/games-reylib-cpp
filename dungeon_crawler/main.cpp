@@ -7,6 +7,7 @@ int main() {
   const int screenWidth = 1280;
   const int screenHeight = 720;
 
+  SetConfigFlags(FLAG_WINDOW_RESIZABLE);
   InitWindow(screenWidth, screenHeight, "Cryptbound - Roguelike Dungeon");
   SetTargetFPS(60);
 

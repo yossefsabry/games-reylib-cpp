@@ -44,6 +44,9 @@ void DrawGame(const Game &game) {
   Color wallB{32, 34, 40, 255};
   Color unseen{3, 4, 6, 255};
   Color exitColor{90, 120, 160, 255};
+  Color doorA{118, 84, 44, 255};
+  Color doorB{134, 96, 52, 255};
+  Color doorLine{60, 40, 18, 220};
 
   for (int y = 0; y < game.dungeon.height; y++) {
     for (int x = 0; x < game.dungeon.width; x++) {
@@ -58,17 +61,30 @@ void DrawGame(const Game &game) {
         continue;
       }
 
+      TileType tile = GetTile(game.dungeon, x, y);
       Color base = ((x + y) % 2 == 0) ? floorA : floorB;
-      if (GetTile(game.dungeon, x, y) == TileType::Wall) {
+      if (tile == TileType::Wall) {
         base = ((x + y) % 2 == 0) ? wallA : wallB;
+      } else if (tile == TileType::Door) {
+        base = ((x + y) % 2 == 0) ? doorA : doorB;
       }
 
       if (!vis) base = Tint(base, 0.45f);
       DrawRectangle((int)px, (int)py, game.tileSize, game.tileSize, base);
 
-      if (GetTile(game.dungeon, x, y) == TileType::Wall && vis) {
+      if (tile == TileType::Wall && vis) {
         DrawRectangle((int)px, (int)py, game.tileSize, 4,
                       Tint(Color{120, 120, 140, 255}, 0.3f));
+      }
+
+      if (tile == TileType::Door && vis) {
+        DrawRectangle((int)px + 6, (int)py + 6, game.tileSize - 12,
+                      game.tileSize - 12, Tint(base, 1.1f));
+        DrawRectangleLines((int)px + 6, (int)py + 6, game.tileSize - 12,
+                           game.tileSize - 12, doorLine);
+        DrawCircle((int)(px + game.tileSize * 0.65f),
+                   (int)(py + game.tileSize * 0.5f), 2.0f,
+                   Color{220, 190, 100, 255});
       }
 
       if (vis && game.dungeon.exit.x == x && game.dungeon.exit.y == y) {

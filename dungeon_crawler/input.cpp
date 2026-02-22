@@ -5,6 +5,7 @@
 #include <cmath>
 
 void ResetInput(InputState &state) {
+  state.gamepad = -1;
   state.axisTimer = 0.0f;
   state.axisX = 0;
   state.axisY = 0;
@@ -16,11 +17,24 @@ static int AxisDir(float v, float threshold) {
   return 0;
 }
 
-static void AddAxisMove(InputState &state, float dt, int &dx, int &dy) {
-  if (!IsGamepadAvailable(0)) return;
+static int FindGamepad() {
+  for (int i = 0; i < 4; i++) {
+    if (IsGamepadAvailable(i)) return i;
+  }
+  return -1;
+}
 
-  float ax = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_X);
-  float ay = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_Y);
+static bool GamepadPressed(int index, int button) {
+  if (index < 0) return false;
+  return IsGamepadButtonPressed(index, button);
+}
+
+static void AddAxisMove(InputState &state, float dt, int gamepad, int &dx,
+                        int &dy) {
+  if (gamepad < 0) return;
+
+  float ax = GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_LEFT_X);
+  float ay = GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_LEFT_Y);
   int axisX = AxisDir(ax, 0.55f);
   int axisY = AxisDir(ay, 0.55f);
 
@@ -52,15 +66,26 @@ static void AddAxisMove(InputState &state, float dt, int &dx, int &dy) {
 }
 
 InputAction ReadInput(InputState &state, float dt) {
+  int activePad = FindGamepad();
+  if (activePad != state.gamepad) {
+    state.gamepad = activePad;
+    state.axisTimer = 0.0f;
+    state.axisX = 0;
+    state.axisY = 0;
+  }
+
   InputAction action = {};
   action.confirm = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER) ||
-                   IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN);
+                   GamepadPressed(state.gamepad,
+                                  GAMEPAD_BUTTON_RIGHT_FACE_DOWN);
   action.restart = IsKeyPressed(KEY_R) ||
-                   IsGamepadButtonPressed(0, GAMEPAD_BUTTON_MIDDLE_RIGHT);
+                   GamepadPressed(state.gamepad,
+                                  GAMEPAD_BUTTON_MIDDLE_RIGHT);
   action.usePotion = IsKeyPressed(KEY_H) ||
-                     IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_LEFT);
+                     GamepadPressed(state.gamepad,
+                                    GAMEPAD_BUTTON_RIGHT_FACE_LEFT);
   action.wait = IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_PERIOD) ||
-                IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_UP);
+                GamepadPressed(state.gamepad, GAMEPAD_BUTTON_RIGHT_FACE_UP);
 
   int dx = 0;
   int dy = 0;
@@ -70,15 +95,20 @@ InputAction ReadInput(InputState &state, float dt) {
   else if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_W)) dy = -1;
   else if (IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_S)) dy = 1;
 
-  if (dx == 0 && dy == 0 && IsGamepadAvailable(0)) {
-    if (IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_LEFT)) dx = -1;
-    else if (IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_RIGHT)) dx = 1;
-    else if (IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_UP)) dy = -1;
-    else if (IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_DOWN)) dy = 1;
+  if (dx == 0 && dy == 0) {
+    if (GamepadPressed(state.gamepad, GAMEPAD_BUTTON_LEFT_FACE_LEFT)) dx = -1;
+    else if (GamepadPressed(state.gamepad, GAMEPAD_BUTTON_LEFT_FACE_RIGHT)) {
+      dx = 1;
+    } else if (GamepadPressed(state.gamepad, GAMEPAD_BUTTON_LEFT_FACE_UP)) {
+      dy = -1;
+    } else if (GamepadPressed(state.gamepad,
+                              GAMEPAD_BUTTON_LEFT_FACE_DOWN)) {
+      dy = 1;
+    }
   }
 
   if (dx == 0 && dy == 0) {
-    AddAxisMove(state, dt, dx, dy);
+    AddAxisMove(state, dt, state.gamepad, dx, dy);
   }
 
   action.dx = dx;

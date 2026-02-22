@@ -1,15 +1,33 @@
 #include "game_internal.h"
 
 #include <algorithm>
+#include <cmath>
+
+static void UpdateLayout(Game &game, int screenWidth, int screenHeight) {
+  game.screenWidth = screenWidth;
+  game.screenHeight = screenHeight;
+
+  float uiHeight = std::max(52.0f, std::min(80.0f, screenHeight * 0.1f));
+  float margin = 12.0f;
+  float availW = std::max(100.0f, screenWidth - margin * 2.0f);
+  float availH = std::max(100.0f, screenHeight - uiHeight - margin * 2.0f);
+  int tile = (int)std::floor(std::min(availW / 32.0f, availH / 24.0f));
+  if (tile < 12) tile = 12;
+  if (tile > 40) tile = 40;
+
+  game.tileSize = tile;
+  float dungeonW = game.tileSize * 32.0f;
+  float dungeonH = game.tileSize * 24.0f;
+  float dungeonX = (screenWidth - dungeonW) * 0.5f;
+  float dungeonY = uiHeight +
+                   std::max(0.0f, (screenHeight - uiHeight - dungeonH) * 0.5f);
+  game.dungeonRect = Rectangle{dungeonX, dungeonY, dungeonW, dungeonH};
+  game.uiRect = Rectangle{0, 0, (float)screenWidth, uiHeight};
+}
 
 void InitGame(Game &game, int screenWidth, int screenHeight) {
   game.mode = GameMode::Title;
-  game.screenWidth = screenWidth;
-  game.screenHeight = screenHeight;
-  game.tileSize = 30;
-  game.dungeonRect = Rectangle{0, 0, 960.0f, (float)screenHeight};
-  game.uiRect = Rectangle{960.0f, 0, (float)screenWidth - 960.0f,
-                          (float)screenHeight};
+  UpdateLayout(game, screenWidth, screenHeight);
   game.animTime = 0.12f;
   game.shake = 0.0f;
   ResetInput(game.input);
@@ -17,6 +35,12 @@ void InitGame(Game &game, int screenWidth, int screenHeight) {
 }
 
 void UpdateGame(Game &game, float dt) {
+  int width = GetScreenWidth();
+  int height = GetScreenHeight();
+  if (width != game.screenWidth || height != game.screenHeight) {
+    UpdateLayout(game, width, height);
+  }
+
   InputAction action = ReadInput(game.input, dt);
   UpdateActors(game, dt);
 

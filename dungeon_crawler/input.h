@@ -10,6 +10,7 @@ struct InputAction {
 };
 
 struct InputState {
+  int gamepad;
   float axisTimer;
   int axisX;
   int axisY;

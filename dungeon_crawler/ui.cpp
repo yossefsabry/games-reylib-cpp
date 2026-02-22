@@ -3,110 +3,187 @@
 #include <raylib.h>
 
 #include <algorithm>
+#include <cmath>
 
-static void DrawPanel(Rectangle rec, Color fill, Color border) {
-  DrawRectangleRounded(rec, 0.08f, 10, fill);
-  DrawRectangleRoundedLines(rec, 0.08f, 10, border);
+static void DrawOutlinedText(const char *text, int x, int y, int size,
+                             Color color) {
+  DrawText(text, x + 1, y + 1, size, Color{10, 8, 12, 220});
+  DrawText(text, x, y, size, color);
 }
 
-static void DrawBar(Rectangle rec, float pct, Color fill, Color back) {
-  DrawRectangleRounded(rec, 0.2f, 6, back);
-  Rectangle inner = rec;
-  inner.width *= std::max(0.0f, std::min(1.0f, pct));
-  DrawRectangleRounded(inner, 0.2f, 6, fill);
+static void DrawPlate(Rectangle rec, Color fill, Color border, Color highlight,
+                      Color shadow) {
+  DrawRectangleRec(rec, fill);
+  DrawRectangleLinesEx(rec, 2.0f, border);
+  DrawRectangle((int)rec.x + 1, (int)rec.y + 1, (int)rec.width - 2, 2,
+                highlight);
+  DrawRectangle((int)rec.x + 1, (int)(rec.y + rec.height - 3),
+                (int)rec.width - 2, 2, shadow);
 }
 
-static void DrawMiniMap(const Game &game, Rectangle rec) {
-  int w = game.dungeon.width;
-  int h = game.dungeon.height;
-  float tile = std::min((rec.width - 20) / w, (rec.height - 36) / h);
-  float startX = rec.x + (rec.width - tile * w) * 0.5f;
-  float startY = rec.y + 26 + (rec.height - 32 - tile * h) * 0.5f;
+static void DrawRivets(Rectangle rec, int spacing) {
+  int y = (int)(rec.y + 6);
+  int right = (int)(rec.x + rec.width - 6);
+  for (int x = (int)rec.x + 8; x < right; x += spacing) {
+    DrawCircle(x, y, 2.0f, Color{70, 60, 90, 220});
+    DrawCircle(x + 1, y + 1, 1.0f, Color{20, 16, 26, 200});
+  }
+}
 
-  for (int y = 0; y < h; y++) {
-    for (int x = 0; x < w; x++) {
-      int idx = TileIndex(game.dungeon, x, y);
-      if (game.dungeon.seen[idx] == 0) continue;
-      Color c = GetTile(game.dungeon, x, y) == TileType::Wall
-                    ? Color{40, 44, 52, 255}
-                    : Color{90, 96, 108, 255};
-      if (game.visible[idx] == 0) c = Color{30, 32, 40, 255};
-      DrawRectangle((int)(startX + x * tile), (int)(startY + y * tile),
-                    (int)tile, (int)tile, c);
+static int ClampInt(int v, int minV, int maxV) {
+  if (v < minV) return minV;
+  if (v > maxV) return maxV;
+  return v;
+}
+
+static void DrawBadge(Rectangle rec, const char *label) {
+  DrawRectangleRec(rec, Color{46, 38, 54, 220});
+  DrawRectangleLinesEx(rec, 2.0f, Color{90, 76, 110, 200});
+  DrawOutlinedText(label, (int)rec.x + 8, (int)rec.y + 4, 14,
+                   Color{220, 210, 230, 255});
+}
+
+static void DrawHeart(int x, int y, int scale, float fill) {
+  static const char *pattern[6] = {
+      "0110110", "1111111", "1111111", "0111110", "0011100", "0001000"};
+  int w = 7;
+  int h = 6;
+  float clamped = std::max(0.0f, std::min(1.0f, fill));
+  int filledCols = (int)std::round(w * clamped);
+  Color base{64, 36, 44, 255};
+  Color full{210, 70, 70, 255};
+  for (int py = 0; py < h; py++) {
+    for (int px = 0; px < w; px++) {
+      if (pattern[py][px] != '1') continue;
+      Color c = px < filledCols ? full : base;
+      DrawRectangle(x + px * scale, y + py * scale, scale, scale, c);
     }
   }
-
-  Vector2 p = {(float)game.player.actor.cell.x, (float)game.player.actor.cell.y};
-  DrawRectangle((int)(startX + p.x * tile), (int)(startY + p.y * tile),
-                (int)tile, (int)tile, Color{120, 180, 220, 255});
-  DrawRectangle((int)(startX + game.dungeon.exit.x * tile),
-                (int)(startY + game.dungeon.exit.y * tile), (int)tile,
-                (int)tile, Color{120, 160, 200, 255});
 }
 
-static void DrawLog(const Game &game, Rectangle rec) {
-  int maxLines = 6;
+static void DrawPotion(int x, int y, int scale) {
+  Color glass{70, 120, 150, 255};
+  Color liquid{200, 120, 210, 255};
+  DrawRectangle(x + scale, y + scale, scale * 2, scale * 3, glass);
+  DrawRectangle(x + scale, y + scale * 2, scale * 2, scale * 2, liquid);
+  DrawRectangle(x + scale, y, scale * 2, scale, Color{40, 40, 48, 255});
+  DrawRectangleLines(x + scale, y + scale, scale * 2, scale * 3,
+                     Color{20, 18, 24, 200});
+}
+
+static void DrawCoin(int x, int y, int radius) {
+  DrawCircle(x, y, radius, Color{220, 190, 90, 255});
+  DrawCircleLines(x, y, radius, Color{100, 70, 30, 255});
+  DrawCircle(x - radius / 3, y - radius / 3, radius / 5,
+             Color{255, 240, 200, 220});
+}
+
+static void DrawLogOverlay(const Game &game, Rectangle rec) {
+  if (game.log.empty()) return;
+  DrawRectangleGradientV((int)rec.x, (int)rec.y, (int)rec.width,
+                         (int)rec.height, Color{18, 16, 24, 200},
+                         Color{10, 8, 16, 200});
+  DrawRectangleLinesEx(rec, 2.0f, Color{60, 52, 78, 220});
+  DrawRivets(rec, 24);
+
+  int maxLines = 2;
   int start = 0;
   if ((int)game.log.size() > maxLines) start = game.log.size() - maxLines;
-  int lineY = (int)rec.y + 30;
+  int lineY = (int)rec.y + 10;
   for (int i = start; i < (int)game.log.size(); i++) {
-    DrawText(game.log[i].text.c_str(), (int)rec.x + 12, lineY, 16,
-             Color{200, 200, 210, 255});
+    DrawOutlinedText(game.log[i].text.c_str(), (int)rec.x + 12, lineY, 16,
+                     Color{210, 210, 220, 255});
     lineY += 20;
   }
-
-  int hintY = (int)(rec.y + rec.height - 54);
-  DrawText("Move: WASD / D-Pad", (int)rec.x + 12, hintY, 14,
-           Color{160, 170, 180, 255});
-  DrawText("Potion: H / X  Wait: Space / Y", (int)rec.x + 12, hintY + 18, 14,
-           Color{160, 170, 180, 255});
 }
 
 void DrawUI(const Game &game) {
-  Rectangle panel = game.uiRect;
-  DrawRectangleGradientV((int)panel.x, (int)panel.y, (int)panel.width,
-                         (int)panel.height, Color{18, 20, 28, 255},
-                         Color{12, 14, 22, 255});
-  DrawRectangleLinesEx(panel, 2.0f, Color{40, 46, 60, 255});
+  Rectangle bar = game.uiRect;
+  DrawRectangleGradientV((int)bar.x, (int)bar.y, (int)bar.width,
+                         (int)bar.height, Color{30, 24, 34, 220},
+                         Color{20, 16, 26, 220});
+  DrawRectangleLinesEx(bar, 2.0f, Color{60, 50, 70, 220});
+  DrawRivets(bar, 36);
 
-  float margin = 16.0f;
-  float cardW = panel.width - margin * 2.0f;
-  DrawText("CRYPTBOUND", (int)(panel.x + margin), 24, 24,
-           Color{220, 220, 230, 255});
-  DrawText(TextFormat("Floor %i  Turn %i", game.floor, game.turn),
-           (int)(panel.x + margin), 52, 16, Color{170, 180, 190, 255});
+  int padding = (int)std::max(10.0f, bar.height * 0.2f);
+  int plateH = (int)bar.height - 12;
+  int plateY = (int)bar.y + 6;
+  int heartScale = (int)std::max(2.0f, std::min(4.0f, bar.height / 18.0f));
+  int heartW = 7 * heartScale;
+  int heartH = 6 * heartScale;
+  int hearts = (game.player.maxHp + 3) / 4;
+  int heartGap = 6;
+  int heartsBlockW = hearts > 0 ? hearts * (heartW + heartGap) - heartGap : 0;
+  int potionStep = heartScale * 6;
+  int minLeftW = 180;
+  int leftContentW = heartsBlockW + potionStep * 2 + padding * 2;
+  int leftW = ClampInt(leftContentW, minLeftW, (int)(bar.width * 0.55f));
+  int leftX = (int)bar.x + padding;
+  Rectangle leftPlate{(float)leftX, (float)plateY, (float)leftW,
+                      (float)plateH};
+  DrawPlate(leftPlate, Color{34, 28, 40, 220}, Color{70, 60, 80, 200},
+            Color{100, 86, 120, 120}, Color{16, 12, 22, 200});
 
-  Rectangle stats{panel.x + margin, 80, cardW, 150};
-  Rectangle map{panel.x + margin, 250, cardW, 190};
-  Rectangle log{panel.x + margin, 460, cardW, 230};
-  DrawPanel(stats, Color{22, 26, 34, 255}, Color{50, 60, 74, 255});
-  DrawPanel(map, Color{22, 26, 34, 255}, Color{50, 60, 74, 255});
-  DrawPanel(log, Color{22, 26, 34, 255}, Color{50, 60, 74, 255});
+  int x = leftX + padding;
+  int y = (int)(bar.y + (bar.height - heartH) * 0.5f - 2.0f);
+  for (int i = 0; i < hearts; i++) {
+    int hpChunk = game.player.hp - i * 4;
+    float fill = std::max(0.0f, std::min(1.0f, hpChunk / 4.0f));
+    DrawHeart(x, y, heartScale, fill);
+    x += heartW + heartGap;
+  }
 
-  DrawText("Vitality", (int)(stats.x + 12), (int)(stats.y + 12), 16,
-           Color{190, 200, 210, 255});
-  Rectangle bar{stats.x + 12, stats.y + 36, stats.width - 24, 18};
-  DrawBar(bar, (float)game.player.hp / game.player.maxHp,
-          Color{180, 70, 70, 255}, Color{60, 30, 30, 255});
-  DrawText(TextFormat("HP %i / %i", game.player.hp, game.player.maxHp),
-           (int)(stats.x + 12), (int)(stats.y + 62), 16,
-           Color{210, 210, 220, 255});
+  int potionsSpace = leftX + leftW - padding - x;
+  int maxPotions = std::max(0, potionsSpace / potionStep);
+  int showPotions = std::min(game.player.potions, maxPotions);
+  for (int i = 0; i < showPotions; i++) {
+    DrawPotion(x, y - heartScale, heartScale);
+    x += potionStep;
+  }
+  if (game.player.potions > showPotions) {
+    DrawOutlinedText(TextFormat("x%i", game.player.potions), x + 2,
+                     y + 2, 16, Color{220, 210, 230, 255});
+  }
 
-  DrawText(TextFormat("Potions: %i", game.player.potions),
-           (int)(stats.x + 12), (int)(stats.y + 90), 16,
-           Color{190, 200, 210, 255});
-  DrawText(TextFormat("Gold: %i", game.player.gold), (int)(stats.x + 12),
-           (int)(stats.y + 110), 16, Color{190, 200, 210, 255});
-  DrawText(TextFormat("Atk %i  Def %i", game.player.attack,
-                      game.player.defense),
-           (int)(stats.x + 12), (int)(stats.y + 130), 16,
-           Color{190, 200, 210, 255});
+  int goldTextW = MeasureText(TextFormat("%i", game.player.gold), 20);
+  int levelTextW = MeasureText(TextFormat("Lv %i", game.floor), 20);
+  int rightW = ClampInt(goldTextW + levelTextW + 110, 180,
+                        (int)(bar.width * 0.32f));
+  int rightX = (int)(bar.x + bar.width - rightW - padding);
+  Rectangle rightPlate{(float)rightX, (float)plateY, (float)rightW,
+                       (float)plateH};
+  DrawPlate(rightPlate, Color{34, 28, 40, 220}, Color{70, 60, 80, 200},
+            Color{100, 86, 120, 120}, Color{16, 12, 22, 200});
 
-  DrawText("Map", (int)(map.x + 12), (int)(map.y + 12), 16,
-           Color{190, 200, 210, 255});
-  DrawMiniMap(game, map);
+  int goldX = (int)(rightPlate.x + 16);
+  DrawCoin(goldX, (int)(bar.y + bar.height * 0.5f), 8);
+  DrawOutlinedText(TextFormat("%i", game.player.gold), goldX + 16,
+                   (int)(bar.y + 16), 20, Color{240, 230, 210, 255});
+  DrawOutlinedText(TextFormat("Lv %i", game.floor),
+                   (int)(rightPlate.x + rightPlate.width - levelTextW - 16),
+                   (int)(bar.y + 16), 20, Color{230, 230, 235, 255});
 
-  DrawText("Log", (int)(log.x + 12), (int)(log.y + 12), 16,
-           Color{190, 200, 210, 255});
-  DrawLog(game, log);
+  int centerX = leftX + leftW + padding;
+  int centerRight = rightX - padding;
+  int centerW = centerRight - centerX;
+  if (centerW > 160) {
+    Rectangle centerPlate{(float)centerX, (float)plateY + 2.0f,
+                          (float)centerW, (float)plateH - 4.0f};
+    DrawPlate(centerPlate, Color{32, 26, 38, 220}, Color{70, 60, 80, 200},
+              Color{100, 86, 120, 120}, Color{16, 12, 22, 200});
+    DrawBadge(Rectangle{centerPlate.x + 10, centerPlate.y + 6, 70, 24},
+              "TURN");
+    DrawOutlinedText(TextFormat("%i", game.turn), (int)centerPlate.x + 90,
+                     (int)centerPlate.y + 6, 20,
+                     Color{220, 210, 230, 255});
+    DrawOutlinedText("CRYPTBOUND", (int)centerPlate.x + 8,
+                     (int)centerPlate.y + 30, 16,
+                     Color{200, 190, 210, 255});
+  }
+
+  float logW = std::min(420.0f, game.dungeonRect.width * 0.6f);
+  Rectangle logRec{game.dungeonRect.x + 12,
+                   game.dungeonRect.y + game.dungeonRect.height - 64,
+                   logW, 54};
+  DrawLogOverlay(game, logRec);
 }

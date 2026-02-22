@@ -26,7 +26,7 @@ struct Room {
   }
 };
 
-enum class TileType { Wall, Floor };
+enum class TileType { Wall, Floor, Door };
 enum class ItemType { Potion, Gold };
 enum class GameMode { Title, Playing, GameOver };
 
