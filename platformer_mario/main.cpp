@@ -214,7 +214,8 @@ static Level BuildLevel(int index, Color groundColor, Color brickColor,
   Level level;
   level.worldHeight = 900.0f;
   level.groundY = 800.0f;
-  float targetWidth = 2600.0f + index * 140.0f;
+  int seed = 1000 + index * 97 + index * index * 7;
+  float targetWidth = 2600.0f + index * 140.0f + index * index * 3.0f;
   level.worldWidth = targetWidth;
 
   const float groundHeight = 100.0f;
@@ -227,6 +228,23 @@ static Level BuildLevel(int index, Color groundColor, Color brickColor,
     level.platforms.push_back(Platform{Rectangle{x, y, w, h}, c, kind});
   };
 
+  auto overlapsPlatform = [&](Rectangle rect) {
+    for (const auto &plat : level.platforms) {
+      if (CheckCollisionRecs(rect, plat.rect)) return true;
+    }
+    return false;
+  };
+
+  auto tooCloseToPlatform = [&](Rectangle rect, float marginX, float marginY) {
+    Rectangle padded{rect.x - marginX, rect.y - marginY,
+                     rect.width + marginX * 2.0f,
+                     rect.height + marginY * 2.0f};
+    for (const auto &plat : level.platforms) {
+      if (CheckCollisionRecs(padded, plat.rect)) return true;
+    }
+    return false;
+  };
+
   float x = 0.0f;
   float startWidth = 720.0f;
   addPlatform(x, level.groundY, startWidth, groundHeight, groundColor,
@@ -234,16 +252,16 @@ static Level BuildLevel(int index, Color groundColor, Color brickColor,
   groundSegments.push_back(Rectangle{x, level.groundY, startWidth, groundHeight});
   x += startWidth + 140.0f;
 
-  float maxGap = 180.0f + index * 2.0f;
+  float maxGap = 170.0f + index * 1.6f;
   if (maxGap > 240.0f) maxGap = 240.0f;
-  float minGap = 110.0f + index * 1.0f;
+  float minGap = 110.0f + index * 0.9f;
   if (minGap > maxGap - 30.0f) minGap = maxGap - 30.0f;
 
   int seg = 0;
   while (x < targetWidth - 700.0f) {
-    float noise = Hash01(index * 100 + seg);
+    float noise = Hash01(seed + seg * 13 + 5);
     float width = Clampf(520.0f - index * 6.0f + noise * 80.0f, 300.0f, 560.0f);
-    float gapNoise = Hash01(index * 300 + seg);
+    float gapNoise = Hash01(seed + seg * 31 + 11);
     float gap = minGap + (maxGap - minGap) * gapNoise;
     addPlatform(x, level.groundY, width, groundHeight, groundColor,
                 PLATFORM_GROUND);
@@ -266,25 +284,32 @@ static Level BuildLevel(int index, Color groundColor, Color brickColor,
               PLATFORM_GROUND);
   groundSegments.push_back(Rectangle{x, level.groundY, finalWidth, groundHeight});
 
-  int brickCount = (int)(level.worldWidth / 360.0f) + index / 2;
-  for (int i = 0; i < brickCount; i++) {
-    float step = level.worldWidth / (brickCount + 2.0f);
-    float jitter = (Hash01(index * 500 + i) - 0.5f) * 140.0f;
+  int brickTarget = (int)(level.worldWidth / 380.0f) + index / 3;
+  int brickAttempts = brickTarget * 4;
+  int bricksPlaced = 0;
+  for (int i = 0; i < brickAttempts && bricksPlaced < brickTarget; i++) {
+    float step = level.worldWidth / (brickTarget + 2.0f);
+    float jitter = (Hash01(seed + i * 17 + 23) - 0.5f) * 160.0f;
     float bx = 160.0f + (i + 1) * step + jitter;
     if (bx < safeZoneX + 120.0f) continue;
-    float width = Clampf(220.0f - index * 2.0f + Hash01(index * 50 + i) * 40.0f,
-                         140.0f, 240.0f);
-    float lift = 160.0f + (i % 4) * 44.0f + index * 1.5f;
-    float by = Clampf(level.groundY - lift, 480.0f, level.groundY - 140.0f);
+    float width = Clampf(220.0f - index * 1.6f + Hash01(seed + i * 7) * 44.0f,
+                         160.0f, 240.0f);
+    float lift = 160.0f + (i % 4) * 40.0f + index * 1.2f;
+    float by = Clampf(level.groundY - lift, 500.0f, level.groundY - 150.0f);
+    Rectangle rect{bx, by, width, 32.0f};
+    if (overlapsPlatform(rect)) continue;
+    if (tooCloseToPlatform(rect, 28.0f, 18.0f)) continue;
     addPlatform(bx, by, width, 32.0f, brickColor, PLATFORM_BRICK);
-
     if (i % 2 == 0) {
       level.coins.push_back(Coin{Vector2{bx + width * 0.5f, by - 26.0f}, false});
     }
+    bricksPlaced++;
   }
 
-  int pipeCount = 2 + index / 4;
-  for (int i = 0; i < pipeCount; i++) {
+  int pipeTarget = 1 + index / 4;
+  int pipeAttempts = pipeTarget * 5;
+  int pipesPlaced = 0;
+  for (int i = 0; i < pipeAttempts && pipesPlaced < pipeTarget; i++) {
     if (groundSegments.empty()) break;
     Rectangle segRect =
         groundSegments[(i * 3 + index) % (int)groundSegments.size()];
@@ -294,15 +319,19 @@ static Level BuildLevel(int index, Color groundColor, Color brickColor,
                            190.0f);
     float usable = segRect.width - pWidth - 20.0f;
     if (usable < 10.0f) continue;
-    float px = segRect.x + 10.0f + Hash01(index * 700 + i) * usable;
+    float px = segRect.x + 10.0f + Hash01(seed + i * 29) * usable;
+    Rectangle rect{px, level.groundY - pHeight, pWidth, pHeight};
+    if (overlapsPlatform(rect)) continue;
+    if (tooCloseToPlatform(rect, 18.0f, 12.0f)) continue;
     addPlatform(px, level.groundY - pHeight, pWidth, pHeight, pipeColor,
                 PLATFORM_PIPE);
     level.coins.push_back(
         Coin{Vector2{px + pWidth * 0.5f, level.groundY - pHeight - 26.0f},
              false});
+    pipesPlaced++;
   }
 
-  int hazardTarget = 2 + index;
+  int hazardTarget = 2 + index / 2;
   int attempts = hazardTarget * 4;
   int placed = 0;
   for (int i = 0; i < attempts && placed < hazardTarget; i++) {
@@ -314,7 +343,7 @@ static Level BuildLevel(int index, Color groundColor, Color brickColor,
     float hWidth = 80.0f + (i % 3) * 20.0f;
     float usable = segRect.width - hWidth - 80.0f;
     if (usable < 10.0f) continue;
-    float hx = segRect.x + 40.0f + Hash01(index * 900 + i) * usable;
+    float hx = segRect.x + 40.0f + Hash01(seed + i * 41) * usable;
     Rectangle hRect{hx, level.groundY - hazardHeight, hWidth, hazardHeight};
     bool blocked = false;
     for (const auto &plat : level.platforms) {
@@ -322,10 +351,24 @@ static Level BuildLevel(int index, Color groundColor, Color brickColor,
         blocked = true;
         break;
       }
+      if (plat.kind == PLATFORM_BRICK && CheckCollisionRecs(hRect, plat.rect)) {
+        blocked = true;
+        break;
+      }
     }
     if (blocked) continue;
+    if (tooCloseToPlatform(hRect, 26.0f, 12.0f)) continue;
     level.hazards.push_back(Hazard{hRect});
     placed++;
+  }
+
+  if (placed == 0 && !groundSegments.empty()) {
+    Rectangle segRect = groundSegments[(int)groundSegments.size() / 2];
+    float hWidth = 100.0f;
+    float hx = segRect.x + segRect.width * 0.5f - hWidth * 0.5f;
+    if (hx < safeZoneX + 80.0f) hx = safeZoneX + 120.0f;
+    Rectangle hRect{hx, level.groundY - hazardHeight, hWidth, hazardHeight};
+    level.hazards.push_back(Hazard{hRect});
   }
 
   level.goal = Rectangle{level.worldWidth - 180.0f, level.groundY - 280.0f, 24.0f,
@@ -566,6 +609,17 @@ int main() {
                                       (int)(dayShift * -20));
     DrawRectangleGradientV(0, 0, screenWidth, screenHeight, skyTopLevel,
                            skyBottomLevel);
+    float skyFlow = fmodf(t * 12.0f, 360.0f);
+    for (int i = 0; i < 6; i++) {
+      float bandY = 40.0f + i * 60.0f + sinf(t * 0.4f + i) * 6.0f;
+      float bandX = -120.0f + fmodf(skyFlow + i * 80.0f, 360.0f);
+      DrawRectangleGradientH((int)bandX, (int)bandY, 380, 22,
+                             Color{255, 255, 255, 18},
+                             Color{255, 255, 255, 0});
+      DrawRectangleGradientH((int)(bandX + 420.0f), (int)(bandY + 8.0f), 320, 18,
+                             Color{255, 255, 255, 14},
+                             Color{255, 255, 255, 0});
+    }
 
     Vector2 sunPos{(float)screenWidth - 150.0f, 120.0f};
     for (int i = 0; i < 8; i++) {
@@ -590,7 +644,7 @@ int main() {
                   Color{255, 255, 255, 22});
     }
 
-    float mountainOffset = fmodf(camera.target.x * 0.12f, 520.0f);
+    float mountainOffset = fmodf(camera.target.x * 0.12f + t * 6.0f, 520.0f);
     for (int i = -1; i < 6; i++) {
       float x = i * 520.0f - mountainOffset;
       DrawTriangle(Vector2{x, 520}, Vector2{x + 260.0f, 280},
@@ -599,7 +653,7 @@ int main() {
                    Vector2{x + 660.0f, 560}, Color{104, 154, 198, 255});
     }
 
-    float cloudOffset = fmodf(camera.target.x * 0.25f, 360.0f);
+    float cloudOffset = fmodf(camera.target.x * 0.25f + t * 18.0f, 360.0f);
     for (int i = -2; i < 8; i++) {
       float x = i * 320.0f - cloudOffset;
       float y = 80.0f + (i % 3) * 28.0f;
@@ -611,7 +665,7 @@ int main() {
     }
 
     for (int i = 0; i < 6; i++) {
-      float bx = fmodf(camera.target.x * 0.12f + i * 180.0f,
+      float bx = fmodf(camera.target.x * 0.12f + i * 180.0f + t * 20.0f,
                        (float)screenWidth + 220.0f) -
                  110.0f;
       float by = 120.0f + (i % 3) * 34.0f;
